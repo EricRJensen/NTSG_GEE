@@ -1,0 +1,154 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var geometry = 
+    /* color: #d63000 */
+    /* shown: false */
+    ee.Geometry.Polygon(
+        [[[-125.0828125, 29.902280090178678],
+          [-111.0203125, 30.434179976355786],
+          [-99.7703125, 24.111358435665487],
+          [-92.56328125000002, 24.3517990010635],
+          [-94.496875, 49.25683363878292],
+          [-125.25859375, 49.42862428430654],
+          [-124.90703125, 44.01233232748235]]]);
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+//  -------------- Initial script -------------------------
+
+var npp = ee.ImageCollection("projects/rangeland-analysis-platform/npp-partitioned-16day-v2")
+  .select(['afgNPP', 'pfgNPP']);
+var npp_prov = ee.ImageCollection('projects/rangeland-analysis-platform/npp-partitioned-16day-v2-provisional')
+  .select(['afgNPP', 'pfgNPP']);
+  print(npp_prov, 'npp_prov')
+var mat = ee.ImageCollection("projects/rangeland-analysis-platform/gridmet-MAT");
+
+// biomass conversion function
+// input: two band image (afgNPP, pfgNPP) from projects/rangeland-analysis-platform/npp-partitioned-v2
+// output: three band image, aboveground biomass (afgAGB, pfgAGB, herbaceousAGB)
+var biomassFunction = function(image) {
+    
+    var year = ee.Date(image.get('system:time_start')).format('YYYY');
+    var matYear = mat.filterDate(year).first();
+    var fANPP = (matYear.multiply(0.0129)).add(0.171).rename('fANPP'); // fraction of NPP to allocate aboveground
+    
+    var agb = image.multiply(0.0001) // NPP scalar 
+                .multiply(2.20462) // KgC to lbsC
+                .multiply(4046.86) // m2 to acres
+                .multiply(fANPP)  // fraction of NPP aboveground
+                .multiply(2.1276) // C to biomass
+                .rename(['afgAGB', 'pfgAGB'])
+                .copyProperties(image, ['system:time_start'])
+                .set('year', year);
+
+    var herbaceous = ee.Image(agb).reduce(ee.Reducer.sum()).rename(['herbaceousAGB']);
+    
+    agb = ee.Image(agb).addBands(herbaceous);
+
+    return agb;
+};
+
+var biomassFunction_2021 = function(image) {
+    
+    var year = ee.Date('2020')
+    var year_num = ee.Number(2021)
+    var matYear = mat.filterDate(year).first();
+    var fANPP = (matYear.multiply(0.0129)).add(0.171).rename('fANPP'); // fraction of NPP to allocate aboveground
+    
+    var agb = image.multiply(0.0001) // NPP scalar 
+                .multiply(2.20462) // KgC to lbsC
+                .multiply(4046.86) // m2 to acres
+                .multiply(fANPP)  // fraction of NPP aboveground
+                .multiply(2.1276) // C to biomass
+                .rename(['afgAGB', 'pfgAGB'])
+                .copyProperties(image, ['system:time_start'])
+                .set('year', year_num);
+
+    var herbaceous = ee.Image(agb).reduce(ee.Reducer.sum()).rename(['herbaceousAGB']);
+    
+    agb = ee.Image(agb).addBands(herbaceous);
+
+    return agb;
+};
+
+var addDOY = function(img){
+  var doy = img.date().getRelative('day', 'year')
+  return(img.set('doy', doy))}
+
+var biomass = npp.map(biomassFunction).map(addDOY);
+var biomass_prov = npp_prov.map(biomassFunction_2021).map(addDOY);
+var biomass_all = biomass.merge(biomass_prov)
+
+// add 2019 perennial forb and grass biomass (pfgAGB) to map
+// bamako palette, from 'users/gena/packages:palettes'
+var bamakoReverse = [ "00404D", "084449", "0F4845", "154C41", "1C513C",
+  "235538", "2B5A34", "325F2F", "3A652A", "436A25", "4C7020", "56771A",  
+  "617E14", "6C840E", "7A8B06", "878E03", "969206", "A89A14", "B9A525", 
+  "CBB33A", "D9BF4F", "E3C961", "EDD375", "F6DC86", "FFE599" ].reverse();
+  
+  
+  
+// ----------- Analysis of production starting here — EJ ------------------
+// Yearlist of year strings
+var yearlist = ee.List.sequence(1986,2021,1).map(function(number){ return ee.String(number).slice(0,4); })
+
+// Map over the yearlist to produce an image collection of annual biomass and then reduce it to the mean
+var biomass_avg = ee.ImageCollection(yearlist.map(function(year){
+  var biomass_yr = biomass_all.filterMetadata('year', 'equals', year)
+                          .select('herbaceousAGB')
+  return(biomass_yr.sum().set('year', year))})).mean()
+
+var biomass_avg = biomass_avg.addBands(biomass_avg.multiply(.05)).rename(["herbaceousAGB", "herbaceousAGBpt05"])
+
+// Nested function to return image collections of masked DOY greater than 5% of annual production
+var calc_gte_pt05_yrs = function(year){
+  var biomass_yr = biomass_all.filterMetadata('year', 'equals', year)
+                              .select('herbaceousAGB')
+
+  // Function to return bands of day of year masked when below 5% of annual production
+  var calc_gte_pt05_yr = function(img){
+    var mask = biomass_avg.select('herbaceousAGBpt05').lte(img)
+    var biomass_day_masked = img.addBands(ee.Image.constant(img.get('doy')))
+                                      .rename(['herbaceousAGB', 'doy'])
+                                      .updateMask(mask)
+                                      .select('doy')
+                                      .toInt()
+    return(biomass_day_masked)
+  }
+  return(ee.ImageCollection(biomass_yr.map(calc_gte_pt05_yr)).reduce(ee.Reducer.firstNonNull()))
+}
+
+// Map the nested loop over the 35 years
+var biomass_gte_pt05 = ee.ImageCollection(yearlist.map(calc_gte_pt05_yrs)).mean()
+
+Map.addLayer(biomass_gte_pt05, {min: 0, max: 200, palette: bamakoReverse}, 'first_prod' )
+// Map.addLayer(biomass_avg.select('herbaceousAGB'), {min: 0, max: 3000, palette: bamakoReverse}, 'annual')
+
+
+// --------- Calculate product ---------
+// Nested function to return image collections of masked DOY greater than 5% of annual production
+var calc_gte_pt05_yrs = function(year){
+  var biomass_yr = biomass_prov.filterMetadata('year', 'equals', year)
+                              .select('herbaceousAGB')
+
+  // Function to return bands of day of year masked when below 5% of annual production
+  var calc_gte_pt05_yr = function(img){
+    var mask = biomass_avg.select('herbaceousAGBpt05').lte(img)
+    var biomass_day_masked = img.addBands(ee.Image.constant(img.get('doy')))
+                                      .rename(['herbaceousAGB', 'doy'])
+                                      .updateMask(mask)
+                                      .select('doy')
+                                      .toInt()
+    return(biomass_day_masked)
+  } }
+
+
+
+
+
+
+
+// Export.image.toDrive({
+//   image: biomass_gte_pt05,
+//   description: 'ProductionOnset_cont_1000',
+//   scale: 1000,
+//   maxPixels: 1e13,
+//   region: geometry
+// });

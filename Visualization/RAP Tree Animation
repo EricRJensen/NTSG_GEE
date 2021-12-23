@@ -1,0 +1,97 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var cover = ee.ImageCollection("projects/rangeland-analysis-platform/vegetation-cover-v2"),
+    sage = ee.FeatureCollection("users/ericjensen41_default/NTSG/US_Sagebrush_Biome"),
+    geometry = 
+    /* color: #d63000 */
+    /* displayProperties: [
+      {
+        "type": "rectangle"
+      }
+    ] */
+    ee.Geometry.Polygon(
+        [[[-126.1375, 49.5713252071257],
+          [-126.1375, 24.950898932679788],
+          [-92.29960937500002, 24.950898932679788],
+          [-92.29960937500002, 49.5713252071257]]], null, false);
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+// Author: Eric Jensen and Matt Jones, Working Lands for Wildlife, University of Montana
+// Contact: eric.jensen@mso.umt.edu
+// Date: March 30, 2021
+// Purpose of script: This script exports RAP Vegetation Cover raster data (TIF file format) from Google Earth Engine to your personal Google Drive
+// Supporting article: https://support.rangelands.app/article/62-export-vegetation-cover-rasters
+
+
+// ------------------------------------------------------------
+// -------------- Variables for User to change ----------------
+// ------------------------------------------------------------
+
+// ---------- Define the bounding box ------------------------------
+//  If bounding box was drawn on map below, no additional steps are needed.
+//
+//  If a shapefile was loaded - rename shapefile to 'geometry'.  To do this 
+//  click the default shapefile name (likely 'table') in the Imports panel above,
+//  and rename it 'geometry'
+
+// ---------- Define the years that you want to export --------------
+// ---------- End year is inclusive in this case  ------------------
+var yearStart = 1990
+var yearEnd = 2020
+
+// -------------- Define the plant functional types (PFTs) that you want to export --------------
+// PFTs are "AFGC" (Annual forb and grass cover), "BG" (bare ground), "LTR" (litter), 
+// "PFGC" (perennial forb and grass cover), "SHR" (shrub cover), and "TREE" (tree cover)
+var PFTs = ee.List(['TREE'])
+
+// ------------- Select the PFTs for export as defined by User  --------------
+var cover_toExport = cover.select(PFTs)
+
+// -------------------------- Masks ------------------------------------------------------
+
+//NASS AND NLCD MASK
+var nass = ee.ImageCollection("USDA/NASS/CDL")
+var nassMask = nass.filterDate('2013-01-01','2099')
+  .map(function(image) {
+    return image.select('cultivated').eq(2)
+    }).sum().eq(0);
+
+// NLCD mask
+var nlcd = ee.ImageCollection('USGS/NLCD')    
+var nlcdMask = nlcd.filter(ee.Filter.eq('system:index', 'NLCD2016'))
+  .select(0)
+  .map(function(image) {
+    return image.remap(
+      [12, 31, 41, 42, 43, 51, 52, 71, 72, 73, 74, 81,90, 95],
+      [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]); 
+  }).first().eq(1).unmask();
+
+// BPS Mask 
+var bps = ee.Image("users/smorford/bpsVegGroups");
+var mappingMask = bps.gte(8).multiply(bps.lt(11)).multiply(nlcdMask).multiply(nassMask).remap([1],[1]);
+
+var cover_toExport = cover_toExport.map(function(image) { 
+  return image.updateMask(mappingMask)
+    .rename('treeCoverPct')
+    .copyProperties(image, ['system:time_start'])
+    .copyProperties(image, ['system:index']);
+})
+
+
+
+// ----------------------------------------------------------------------
+// -------------- Do not edit anything below this header ----------------
+// ----------------------------------------------------------------------
+
+// ------------- Export images one-by-one for each year -------------
+
+// Loop over year objects to export images year-by-year
+for (var yr = yearStart; yr <= yearEnd; yr++){
+  // Export the image, specifying scale and region.
+  Export.image.toDrive({
+    image: cover_toExport.filterDate(yr.toString(), (yr+1).toString()).first(),
+    description: 'RAP_Tree_' + yr +'_300',
+    folder: 'RAP_exports',
+    scale: 300,
+    region: geometry.bounds(),
+    maxPixels: 1e10
+  });
+}

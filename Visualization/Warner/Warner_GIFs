@@ -1,0 +1,129 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var GB = ee.FeatureCollection("users/ericjensen41_default/Thesis/Project_Boundaries/GBbounds"),
+    geometry = 
+    /* color: #d63000 */
+    /* shown: false */
+    /* displayProperties: [
+      {
+        "type": "rectangle"
+      }
+    ] */
+    ee.Geometry.Polygon(
+        [[[-126.63617450006643, 49.90216973388452],
+          [-126.63617450006643, 25.20247887458301],
+          [-91.54446917780083, 25.20247887458301],
+          [-91.54446917780083, 49.90216973388452]]], null, false),
+    table = ee.FeatureCollection("users/ericjensen41_default/Thesis/Project_Boundaries/Warner_StudyAreas");
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+var contr = table.filterMetadata('Name', 'equals', 'Control').first()
+var contr_geom = contr.geometry()
+Map.addLayer(contr_geom)
+// Landsat timelapse: https://app.gishub.org/voila/render/timelapse.ipynb
+  
+// --------------- Import and prepare data -----------------
+var RAP_cov = ee.ImageCollection("projects/rangeland-analysis-platform/vegetation-cover-v2")
+  .select(['TREE'])
+  .filterMetadata('year', 'greater_than', 1986)
+
+
+print(RAP_cov)
+// var RAP_npp = ee.ImageCollection("projects/rangeland-analysis-platform/npp-partitioned-v2")
+//   .select(['afgNPP', 'pfgNPP'])
+// var mat = ee.ImageCollection("projects/rangeland-analysis-platform/gridmet-MAT");
+  
+// var biomassFunction = function(image) {
+    
+//     var year = ee.Date(image.get('system:time_start')).format('YYYY');
+//     var matYear = mat.filterDate(year).first();
+//     var fANPP = (matYear.multiply(0.0129)).add(0.171).rename('fANPP'); // fraction of NPP to allocate aboveground
+    
+//     var agb = image.multiply(0.0001) // NPP scalar 
+//                 .multiply(2.20462) // KgC to lbsC
+//                 .multiply(4046.86) // m2 to acres
+//                 .multiply(fANPP)  // fraction of NPP aboveground
+//                 .multiply(2.1276) // C to biomass
+//                 .rename(['afgAGB', 'pfgAGB'])
+//                 .copyProperties(image, ['system:time_start'])
+//                 .set('year', year);
+
+//     var herbaceous = ee.Image(agb).reduce(ee.Reducer.sum()).rename(['herbaceousAGB']);
+    
+//     agb = ee.Image(agb).addBands(herbaceous);
+
+//     return agb;
+// };
+
+// var RAP_bio = RAP_npp.map(biomassFunction).filterDate('2000-01-01','2020-01-01')//.filterMetadata('system:index', 'greater_than', 1999)
+// print(RAP_bio)
+// // Calculate biomass average
+// var RAP_bio_avg = RAP_bio.mean()
+
+// // Calculate biomass anomaly
+// var RAP_bio_anom = ee.ImageCollection(RAP_bio.map(function(img){
+//   return(img.divide(RAP_bio_avg))
+// }))
+  
+//------------- Visualize GIF --------------------
+var palettes = require('users/gena/packages:palettes');
+
+// Select palette: https://github.com/gee-community/ee-palettes
+// var palette_bio = palettes.crameri.bamako[25].reverse();
+var palette_tree = palettes.colorbrewer.Greens[9];
+var palette_tree_gyr = ['A6D4B2', 'F0E442', 'E69F00', 'AB0B0B']
+// var palette_afgc = palettes.colorbrewer.OrRd[9];
+
+
+// Identify band of interest
+// var visParams_bio = {
+//   min: 0,
+//   max: 2000,
+//   bands: ['herbaceousAGB'],
+//   palette: palette_bio} 
+  
+var visParams_tree = {
+  min: 0,
+  max: 20,
+  bands: ['TREE'],
+  palette: palette_tree_gyr} 
+  
+ 
+  
+var RAP_viz = RAP_cov.map(function(img){
+  return img.visualize(visParams_tree).clip(geometry) })
+
+// Define GIF visualization arguments.
+var gifParams = {
+  'region': contr_geom,
+  'dimensions': 900,
+  'crs': 'EPSG:4326',
+  'framesPerSecond': 1,
+  'format': 'gif'
+};
+
+// Print the GIF URL to the console.
+print(RAP_viz.getVideoThumbURL(gifParams));
+
+// Render the GIF animation in the console.
+print(ui.Thumbnail(RAP_viz, gifParams));
+
+
+// Export the FeatureCollection to a CSV file.
+var RAP_rr = RAP_cov.select('TREE')
+                                  .toBands()
+                                  .reduceRegion({reducer:ee.Reducer.mean(), geometry: contr_geom, maxPixels: 1e13})
+var RAP_bio_anom_fc = ee.FeatureCollection(RAP_bio_anom_rr)
+
+var geom_f = ee.Feature(geometry)
+var geom_fc = ee.FeatureCollection(geom_f)
+var RAP_bio_anom_rr = RAP_bio_anom.select('herbaceousAGB')
+                                  .toBands()
+                                  .reduceRegions({reducer:ee.Reducer.mean(), 
+                                                collection: geom_fc, 
+                                                scale: 30 })
+
+
+// Export.table.toDrive({
+//   collection: RAP_bio_anom_rr,
+//   description:'RAP_bio_anom_rr',
+//   fileFormat: 'CSV'
+// });

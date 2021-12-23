@@ -1,0 +1,66 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var grd = ee.ImageCollection("IDAHO_EPSCOR/GRIDMET"),
+    states = ee.FeatureCollection("TIGER/2018/States"),
+    states_filt = 
+    /* color: #d63000 */
+    /* shown: false */
+    /* displayProperties: [
+      {
+        "type": "rectangle"
+      }
+    ] */
+    ee.Geometry.Polygon(
+        [[[-126.18135948181153, 50.389893997823336],
+          [-126.18135948181153, 25.148672494082227],
+          [-98.32003135681153, 25.148672494082227],
+          [-98.32003135681153, 50.389893997823336]]], null, false);
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+var states_west = states.filterBounds(states_filt).geometry()
+var currentDOY = ee.Number(96)
+
+var addDOY = function(img){
+  var doy = img.date().getRelative('day', 'year')
+  var year = img.date().get('year')
+  return(img.set('doy', doy).set('year', year))}
+
+var grd = grd.select('pr').map(addDOY).filterBounds(states_west)
+                    
+var yearlist = ee.List.sequence(2005, 2020, 1)
+
+var grd_avg = ee.ImageCollection(yearlist.map(function(year){
+  var grd_avg = grd.filterMetadata('year', 'equals', year)
+                   .filterMetadata('doy', 'less_than', currentDOY)
+                   .mean()
+  return(grd_avg.set('year', year))  })).mean()
+
+var grd_cur = grd.filterMetadata('year', 'equals', 2021)
+                 .filterMetadata('doy', 'less_than', currentDOY)
+                 .mean()
+                 
+var grd_anom = grd_cur.subtract(grd_avg)
+
+var palettes = require('users/gena/packages:palettes');
+
+// Select palette: https://github.com/gee-community/ee-palettes
+var palette = palettes.colorbrewer.RdBu[11].reverse()
+
+Map.addLayer(grd_anom.clip(states_west), {min:-5, max: 5, palette: palette}, 'temp anomaly')
+
+// Map.addLayer(grd_cur, {min:240, max: 310}, 'current')
+// Map.addLayer(grd_avg, {min:240, max: 310}, 'average')
+
+// Export.image.toDrive({
+//   image: grd_cur,
+//   description: 'tempCurrent',
+//   scale: 500,
+//   maxPixels: 1e13,
+//   region: states_west
+// });
+
+// Export.image.toDrive({
+//   image: grd_avg,
+//   description: 'tempAverage',
+//   scale: 500,
+//   maxPixels: 1e13,
+//   region: states_west
+// });

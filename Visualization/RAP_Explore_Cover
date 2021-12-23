@@ -1,0 +1,47 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var cover = ee.ImageCollection("projects/rangeland-analysis-platform/vegetation-cover-v2"),
+    geometry = 
+    /* color: #d63000 */
+    /* shown: false */
+    ee.Geometry.Polygon(
+        [[[-120.09275645987523, 42.198298863797085],
+          [-120.12777538077367, 42.158100063037644],
+          [-120.11335582510961, 42.1418097329513],
+          [-120.13326854483617, 42.1300984687352],
+          [-120.09550304190648, 42.08272214528365],
+          [-120.05087108389867, 42.04601938775021],
+          [-120.02855510489476, 42.050608392752416],
+          [-120.00005931632055, 42.020008764549864],
+          [-119.98426646964086, 42.042449932451326],
+          [-119.99743210250868, 42.06467762696526],
+          [-119.93632065231337, 42.14822290566294],
+          [-119.959666599579, 42.1782518978267],
+          [-119.91503464157118, 42.1986024295339],
+          [-119.90748154098524, 42.29314633022016],
+          [-120.07914291793837, 42.29213048274061],
+          [-120.10111557418837, 42.248941820272584],
+          [-120.09630905563368, 42.221488946375544]]]),
+    sage = ee.FeatureCollection("users/ericjensen41_default/Thesis/Project_Boundaries/US_Sagebrush_Biome");
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+// Investigate conifer expansion
+var tree = cover.select('TREE')
+var treat = geometry.buffer(1000)
+
+// rangeland mask 
+var mask = ee.Image('users/chohnz/wga_Reeves_NLCD_range_mask_union').neq(1)
+
+var tree_90 = tree.filterDate('1988-01-01', '1990-01-01').median()
+var tree_10 = tree.filterDate('2008-01-01', '2010-01-01').median()
+var tree_20 = tree.filterDate('2018-01-01', '2020-01-01').median()
+var tree_diff_10 = tree_10.subtract(tree_90)
+var tree_diff = tree_20.subtract(tree_90)//.updateMask(mask)
+var tree_diff_smooth = tree_diff.focal_median(5000, 'circle', 'meters')
+var tree_remv = tree_diff.clip(treat).lt(-6)
+
+var palettes = require('users/gena/packages:palettes');
+
+var diff_palette = palettes.colorbrewer.BrBG[11]
+
+Map.addLayer(tree_diff_10.clip(sage), {min: -10, max: 10, palette: diff_palette}, 'tree_diff')
+// Map.addLayer(tree_diff_smooth.updateMask(mask).clip(sage), {min: -10, max: 10, palette: diff_palette}, 'tree_diff_smooth')
+Map.addLayer(tree_remv)

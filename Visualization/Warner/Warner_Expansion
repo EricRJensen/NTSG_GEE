@@ -1,0 +1,126 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var sage = ee.FeatureCollection("users/ericjensen41_default/Thesis/Project_Boundaries/US_Sagebrush_Biome"),
+    cover = ee.ImageCollection("projects/rangeland-analysis-platform/vegetation-cover-v2"),
+    roi = ee.FeatureCollection("users/ericjensen41_default/Thesis/Project_Boundaries/Warner_StudyAreas");
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+// Author: Eric Jensen
+// Date: May 13, 2021 
+
+// ----------------------------------------------------------------
+// ---------------- Pre-process data inputs -----------------------
+// ----------------------------------------------------------------
+
+// Import rangeland mask 
+var mask = ee.Image('users/chohnz/wga_Reeves_NLCD_range_mask_union').neq(1) 
+
+// Process polygons
+ // control and treatment regions
+var contr = roi.filterMetadata('Name', 'equals', 'Control') // subset of control area
+var contr_geom = contr.geometry()
+
+// Pre-process tree data
+var tree = cover.select('TREE')
+var tree_img = tree.toBands()
+var tree_mask = tree_img.select('2020_TREE').gt(10) // mask pixels with < 10% cover (below phase 1) in 2007 (year before treatments began)
+var tree_img_masked = tree_img.updateMask(tree_mask) 
+
+// -------------- Import and convert annual net primary productivity to aboveground herbaceous biomass production --------------
+var npp = ee.ImageCollection("projects/rangeland-analysis-platform/npp-partitioned-v2")
+  .select(['afgNPP', 'pfgNPP']);
+var mat = ee.ImageCollection("projects/rangeland-analysis-platform/gridmet-MAT");
+
+// biomass conversion function
+// input: two band image (afgNPP, pfgNPP) from projects/rangeland-analysis-platform/npp-partitioned-v2
+// output: three band image, aboveground biomass (afgAGB, pfgAGB, herbaceousAGB)
+var biomassFunction = function(image) {
+    
+    var year = ee.Date(image.get('system:time_start')).format('YYYY');
+    var matYear = mat.filterDate(year).first();
+    var fANPP = (matYear.multiply(0.0129)).add(0.171).rename('fANPP'); // fraction of NPP to allocate aboveground
+    
+    var agb = image.multiply(0.0001) // NPP scalar 
+                .multiply(2.20462) // KgC to lbsC
+                .multiply(4046.86) // m2 to acres
+                .multiply(fANPP)  // fraction of NPP aboveground
+                .multiply(2.1276) // C to biomass
+                .rename(['afgAGB', 'pfgAGB'])
+                .copyProperties(image, ['system:time_start'])
+                .set('year', year);
+
+    var herbaceous = ee.Image(agb).reduce(ee.Reducer.sum()).rename(['herbaceousAGB']);
+    
+    agb = ee.Image(agb).addBands(herbaceous);
+
+    return agb;
+};
+
+var biomass = npp.map(biomassFunction);
+
+var biomass_img_masked = biomass.toBands()//.updateMask(tree_mask)
+
+// ----------------------------------------------------------------
+// ---------------- Export time-series plots ----------------------
+// ----------------------------------------------------------------
+// // Export masked tree change CSV for the treatment polygons
+// var contr_rr = tree_img_masked.reduceRegions({collection: contr, reducer:ee.Reducer.mean(), scale: 30})
+// print(contr_rr)
+// // Export the FeatureCollection to a CSV file.
+// Export.table.toDrive({
+//   collection: contr_rr,
+//   description:'Warner_control',
+//   fileFormat: 'CSV'
+// });
+
+// // Export masked biomass change CSV for the treatment polygons
+// var biomass_rr = biomass_img_masked.reduceRegions({collection: contr, reducer:ee.Reducer.mean(), scale: 30})
+// print(biomass_rr)
+// // Export the FeatureCollection to a CSV file.
+// Export.table.toDrive({
+//   collection: biomass_rr,
+//   description:'Warner_control_biomass',
+//   fileFormat: 'CSV'
+// });
+
+// ----------------------------------------------------------------
+// ---------------- Map tree cover change -------------------------
+// ----------------------------------------------------------------
+
+// // ------------ Initial encroachment -------------------------
+// Baseline
+var tree_90 = tree.filterDate('1988-01-01', '1990-01-01')
+                  .mean()
+                  .clip(contr)
+
+// // After encroachment
+// var tree_07 = tree.filterDate('2006-01-01', '2007-01-01')
+//                   .mean()
+//                   .clip(region)
+                  
+// // Difference (encroachment)
+// var tree_encr = tree_07.subtract(tree_90)//.focal_mean(100, 'circle', 'meters')//.updateMask(mask)
+
+// // Visualize time periods
+// // Import Color palettes
+var palettes = require('users/gena/packages:palettes');
+var tree_palette = palettes.matplotlib.inferno[7]
+Map.addLayer(tree_90, {min:0, max: 40, palette: tree_palette}, 'tree_90')
+// Map.addLayer(tree_07, {min:0, max: 40, palette: tree_palette}, 'tree_10')
+var diff_palette = palettes.colorbrewer.BrBG[11]
+// Map.addLayer(tree_encr, {min: -10, max: 10, palette: diff_palette}, 'tree_encr',false)
+
+
+// // ------------ Removal -------------------------
+// // After removal
+var tree_20 = tree.filterDate('2018-01-01', '2020-01-01')
+                  .mean()
+                  .clip(contr)
+
+// // Difference (removal)
+// var tree_remv = tree_20.subtract(tree_07)//.focal_mean(100, 'circle', 'meters')//.updateMask(mask)
+var tree_diff = tree_20.subtract(tree_90)//.focal_mean(100, 'circle', 'meters')
+
+// // Visualize time periods
+Map.addLayer(tree_20, {min:0, max: 40, palette: tree_palette}, 'tree_20')
+// Map.addLayer(tree_remv, {min: -10, max: 10, palette: diff_palette}, 'tree_remv',false)
+Map.addLayer(tree_diff, {min: -10, max: 10, palette: diff_palette}, 'tree_diff', false)
+// Map.addLayer(treat, {color: 'red'}, "treatments")

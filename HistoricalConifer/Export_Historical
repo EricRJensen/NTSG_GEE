@@ -1,0 +1,118 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var restaino1 = 
+    /* color: #d63000 */
+    /* shown: false */
+    /* displayProperties: [
+      {
+        "type": "rectangle"
+      }
+    ] */
+    ee.Geometry.Polygon(
+        [[[-116.53838956276915, 42.91092752638262],
+          [-116.53838956276915, 42.8929773792087],
+          [-116.50008761803649, 42.8929773792087],
+          [-116.50008761803649, 42.91092752638262]]], null, false),
+    restaino2 = 
+    /* color: #98ff00 */
+    /* shown: false */
+    /* displayProperties: [
+      {
+        "type": "rectangle"
+      }
+    ] */
+    ee.Geometry.Polygon(
+        [[[-116.90653594361375, 42.92218586067845],
+          [-116.90653594361375, 42.88068955429649],
+          [-116.81984694825242, 42.88068955429649],
+          [-116.81984694825242, 42.92218586067845]]], null, false),
+    iwjv_BOSH = 
+    /* color: #d63000 */
+    /* shown: false */
+    /* displayProperties: [
+      {
+        "type": "rectangle"
+      }
+    ] */
+    ee.Geometry.Polygon(
+        [[[-116.59564247456437, 42.8880157064591],
+          [-116.59564247456437, 42.82648167675531],
+          [-116.46603813496476, 42.82648167675531],
+          [-116.46603813496476, 42.8880157064591]]], null, false),
+    iwjv_flintMine = 
+    /* color: #98ff00 */
+    /* shown: false */
+    /* displayProperties: [
+      {
+        "type": "rectangle"
+      }
+    ] */
+    ee.Geometry.Polygon(
+        [[[-116.85940561004432, 42.949254676228165],
+          [-116.85940561004432, 42.87186924389432],
+          [-116.70945939727577, 42.87186924389432],
+          [-116.70945939727577, 42.949254676228165]]], null, false),
+    roberts = 
+    /* color: #d63000 */
+    /* shown: false */
+    /* displayProperties: [
+      {
+        "type": "rectangle"
+      },
+      {
+        "type": "rectangle"
+      }
+    ] */
+    ee.Geometry.MultiPolygon(
+        [[[[-116.98660974745374, 43.018667655214635],
+           [-116.98660974745374, 42.959808050614],
+           [-116.89146642927747, 42.959808050614],
+           [-116.89146642927747, 43.018667655214635]]],
+         [[[-116.98723720932949, 43.0176769783264],
+           [-116.98723720932949, 42.953885276934805],
+           [-116.8835537376498, 42.953885276934805],
+           [-116.8835537376498, 43.0176769783264]]]], null, false),
+    roberts2 = 
+    /* color: #98ff00 */
+    /* displayProperties: [
+      {
+        "type": "rectangle"
+      }
+    ] */
+    ee.Geometry.Polygon(
+        [[[-116.98655056382168, 43.01843002805686],
+          [-116.98655056382168, 42.95162372673574],
+          [-116.88527035141934, 42.95162372673574],
+          [-116.88527035141934, 43.01843002805686]]], null, false);
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+// https://smorford.users.earthengine.app/view/northern-rocky-mountains-historical-imagery#lon=-116.52206811904907;lat=42.90608236582827;zoom=16;
+var roi = ee.FeatureCollection("projects/rangeland-analysis-platform/historical-conifer/northern-rockies/roi");
+roi = ee.FeatureCollection([ee.Feature(roi.geometry(),{class:1})]);
+roi = ee.Image().byte().paint(roi, "class").rename("class");
+
+var hist_ic = ee.ImageCollection("projects/rangeland-analysis-platform/historical-conifer/northern-rockies/ortho");
+hist_ic = hist_ic.map(function(img) {
+  return img.updateMask(roi);  
+});
+
+var hist_i = hist_ic.mosaic()
+                    // .reproject('EPSG:4326', null, 500);
+
+Map.addLayer(hist_i);
+
+// Export the image, specifying scale and region.
+// Export.image.toDrive({
+//   image: hist_i,
+//   description: 'iwjv_BOSH',
+//   scale: 1,
+//   maxPixels: 1e13,
+//   region: iwjv_BOSH
+// });
+
+
+Export.image.toDrive({
+  image: hist_i,
+  description: 'roberts2',
+  scale: 1,
+  maxPixels: 1e13,
+  region: roberts2
+});

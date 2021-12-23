@@ -1,0 +1,50 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var FireN = ee.Image("users/ericjensen41_default/NTSG/MTBS_Counts_Sagebrush_30"),
+    AnnH = ee.Image("users/ericjensen41_default/NTSG/WGA_AnnualHerbaceousCover_2016_2018"),
+    RR = ee.Image("users/ericjensen41_default/NTSG/ResilienceAndResistance"),
+    geometry = 
+    /* color: #d63000 */
+    /* displayProperties: [
+      {
+        "type": "rectangle"
+      }
+    ] */
+    ee.Geometry.Polygon(
+        [[[-125.30245323181153, 49.14147929266746],
+          [-125.30245323181153, 33.19641833187298],
+          [-101.13253135681153, 33.19641833187298],
+          [-101.13253135681153, 49.14147929266746]]], null, false);
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+Map.setOptions('hybrid')
+
+// Pre-process data
+var mask = ee.Image('users/chohnz/wga_Reeves_NLCD_range_mask_union').neq(1)
+var FireN = FireN.updateMask(mask)
+
+// Visualization parameters
+var palettes = require('users/gena/packages:palettes');
+// var fire_palette = palettes.crameri.lajolla[10]
+var fireParams = {
+  min: 0,
+  max: 7,
+  palette: ['fff7bc', 'feb24c', 'f03b20', '781D10'] }
+var annParams = {
+  min: 0,
+  max: 60,
+  palette: ['91ee89', 'fdea00', 'ec7c00', 'b60900'] }
+var rrParams = {
+  min: 1,
+  max: 3,
+  palette: ['5695d2', 'fafb09', 'e60000'] }
+
+Map.addLayer(RR, rrParams, 'RandR', false)
+Map.addLayer(AnnH, annParams, 'AnnHerb')
+Map.addLayer(FireN, fireParams, 'FireN')
+
+Export.image.toDrive({
+  image: FireN,
+  description: 'MTBS_Counts_Sagebrush_Range_30',
+  scale: 30,
+  region: geometry,
+  maxPixels: 1e13
+});

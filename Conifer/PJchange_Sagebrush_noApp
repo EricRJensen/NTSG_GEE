@@ -1,0 +1,316 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var sagebrush = ee.FeatureCollection("users/smorford/sagebrush_biome"),
+    image = ee.Image("USGS/NED"),
+    geometry = /* color: #23cba7 */ee.Geometry.MultiPoint();
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+// To do
+// 1) Remove areas with negative change
+// 2) Adjust color ramp (must be ADA accessible)
+// 3) Mock-up basemap (Google options)
+// 4) Remove regional mask
+// 5) Add Sagebrush boundary to the map
+// 6) Apply alpha channel to areas outside of Sagebrush biome
+
+// ------------ Data preparation -------------------------------------
+// -------------------------------------------------------------------
+
+// Sagebrush Biome Mask
+sagebrush = sagebrush.map(function(feat) {
+  return feat.set('value',1)
+})
+var sageMask = sagebrush.reduceToImage(['value'], ee.Reducer.first());
+
+// Inverse sagebrush biome mask
+var sageMask_inv = ee.Image.constant(1).add(sageMask.unmask()).eq(1)
+
+//NASS AND NLCD MASK
+var nass = ee.ImageCollection("USDA/NASS/CDL")
+var nassMask = nass.filterDate('2013-01-01','2099')
+  .map(function(image) {
+    return image.select('cultivated').eq(2)
+    }).sum().eq(0);
+
+// NLCD mask
+var nlcd = ee.ImageCollection('USGS/NLCD')    
+var nlcdMask = nlcd.filter(ee.Filter.eq('system:index', 'NLCD2016'))
+  .select(0)
+  .map(function(image) {
+    return image.remap(
+      [12, 31, 41, 42, 43, 51, 52, 71, 72, 73, 74, 81,90, 95],
+      [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]); 
+  }).first().eq(1).unmask();
+
+// BPS Mask 
+var bps = ee.Image("users/smorford/bpsVegGroups");
+var mappingMask = bps.gte(8).multiply(bps.lt(11)).multiply(nlcdMask).multiply(nassMask).remap([1],[1]);
+
+// Import tree data
+var tree_landtrendr = ee.ImageCollection("projects/rangeland-analysis-platform/treeExpansion/treeCoverTrends")
+
+var treeCover = tree_landtrendr.map(function(image) { 
+  return image.select(0).divide(100)
+    .rename('treeCoverPct')
+    .copyProperties(image, ['system:time_start'])
+    .copyProperties(image, ['system:index']);
+})
+
+// Difference beginning and end of time-series
+var treeCoverDiff = treeCover.filterDate('2019').toBands()
+  .subtract(treeCover.filterDate('1990','1991').toBands())
+
+// Don't show change if cover differences in less than abs(2)
+var sigMask = treeCoverDiff.gte(2)
+
+// Apply masks to tree cover change, within sagebrush
+// This could be done more efficiently.
+var treeCoverDiff_sage = treeCoverDiff.updateMask(mappingMask)
+  .updateMask(sigMask)
+  //.unmask(0)
+  .updateMask(sageMask)
+
+// Apply masks to tree cover change, outside of sagebrush
+var treeCoverDiff_outer = treeCoverDiff.updateMask(mappingMask)
+  .updateMask(sigMask)
+  .updateMask(sageMask_inv)
+
+
+// Export images
+Export.image.toDrive({
+  image: treeCoverDiff_sage.toUint8(),
+  description: 'treeCoverDiff_sage_30',
+  scale: 30,
+  region: geometry,
+  maxPixels: 1e13
+});
+
+Export.image.toDrive({
+  image: treeCoverDiff_outer.toUint8(),
+  description: 'treeCoverDiff_outer_30',
+  scale: 30,
+  region: geometry,
+  maxPixels: 1e13
+});
+
+
+
+
+
+//  ------------------------- Initialization ------------------------------
+
+
+// Hillshade Basemap - Needs to be adjusted
+var elevation = ee.Image('NOAA/NGDC/ETOPO1').select('bedrock');
+var exaggeration = 5;
+var hillshade = ee.Terrain.hillshade(elevation.multiply(exaggeration));
+
+// Create an empty image into which to paint the features, cast to byte.
+var empty = ee.Image().byte();
+
+// Paint all the polygon edges with the same number and width, display.
+var sageOutline = empty.paint({
+  featureCollection: sagebrush,
+  color: 1,
+  width: 3
+});
+
+var palettes = require('users/gena/packages:palettes');
+var treePalette = palettes.crameri.bamako[10].reverse();
+// Map.addLayer(hillshade, {opacity:.2}, 'Hillshade');
+Map.addLayer(treeCoverDiff_sage, {min:2, max:20, palette: treePalette}, 'TreeDiff_sage'); 
+Map.addLayer(treeCoverDiff_outer, {min:2, max:20, palette: treePalette, opacity: .4}, 'TreeDiff_outer');
+Map.addLayer(sageOutline, {palette: '5B5B5B'}, 'SageBiome');
+
+// Export images
+// Export.image.toDrive({
+//   image: treeCoverDiff_sage.toUint8(),
+//   description: 'treeCoverDiff_sage_30',
+//   scale: 30,
+//   region: geometry,
+//   maxPixels: 1e13
+// });
+
+// Export.image.toDrive({
+//   image: treeCoverDiff_outer.toUint8(),
+//   description: 'treeCoverDiff_outer_30',
+//   scale: 30,
+//   region: geometry,
+//   maxPixels: 1e13
+// });
+
+
+
+
+// Map parameters
+Map.setCenter(-113.268, 41.845,6)
+
+var Greyscale = [
+    {
+        "featureType": "all",
+        "elementType": "geometry.fill",
+        "stylers": [
+            {
+                "weight": "2.00"
+            }
+        ]
+    },
+    {
+        "featureType": "all",
+        "elementType": "geometry.stroke",
+        "stylers": [
+            {
+                "color": "#9c9c9c"
+            }
+        ]
+    },
+    {
+        "featureType": "all",
+        "elementType": "labels.text",
+        "stylers": [
+            {
+                "visibility": "on"
+            }
+        ]
+    },
+    {
+        "featureType": "landscape",
+        "elementType": "all",
+        "stylers": [
+            {
+                "color": "#f2f2f2"
+            }
+        ]
+    },
+    {
+        "featureType": "landscape",
+        "elementType": "geometry.fill",
+        "stylers": [
+            {
+                "color": "#ffffff"
+            }
+        ]
+    },
+    {
+        "featureType": "landscape.man_made",
+        "elementType": "geometry.fill",
+        "stylers": [
+            {
+                "color": "#ffffff"
+            }
+        ]
+    },
+    {
+        "featureType": "poi",
+        "elementType": "all",
+        "stylers": [
+            {
+                "visibility": "off"
+            }
+        ]
+    },
+    {
+        "featureType": "road",
+        "elementType": "all",
+        "stylers": [
+            {
+                "saturation": -100
+            },
+            {
+                "lightness": 45
+            }
+        ]
+    },
+    {
+        "featureType": "road",
+        "elementType": "geometry.fill",
+        "stylers": [
+            {
+                "color": "#eeeeee"
+            }
+        ]
+    },
+    {
+        "featureType": "road",
+        "elementType": "labels.text.fill",
+        "stylers": [
+            {
+                "color": "#7b7b7b"
+            }
+        ]
+    },
+    {
+        "featureType": "road",
+        "elementType": "labels.text.stroke",
+        "stylers": [
+            {
+                "color": "#ffffff"
+            }
+        ]
+    },
+    {
+        "featureType": "road.highway",
+        "elementType": "all",
+        "stylers": [
+            {
+                "visibility": "simplified"
+            }
+        ]
+    },
+    {
+        "featureType": "road.arterial",
+        "elementType": "labels.icon",
+        "stylers": [
+            {
+                "visibility": "off"
+            }
+        ]
+    },
+    {
+        "featureType": "transit",
+        "elementType": "all",
+        "stylers": [
+            {
+                "visibility": "off"
+            }
+        ]
+    },
+    {
+        "featureType": "water",
+        "elementType": "all",
+        "stylers": [
+            {
+                "color": "#46bcec"
+            },
+            {
+                "visibility": "on"
+            }
+        ]
+    },
+    {
+        "featureType": "water",
+        "elementType": "geometry.fill",
+        "stylers": [
+            {
+                "color": "#c8d7d4"
+            }
+        ]
+    },
+    {
+        "featureType": "water",
+        "elementType": "labels.text.fill",
+        "stylers": [
+            {
+                "color": "#070707"
+            }
+        ]
+    },
+    {
+        "featureType": "water",
+        "elementType": "labels.text.stroke",
+        "stylers": [
+            {
+                "color": "#ffffff"
+            }
+        ]
+    }
+]
+Map.setOptions('Greyscale', {Greyscale: Greyscale});

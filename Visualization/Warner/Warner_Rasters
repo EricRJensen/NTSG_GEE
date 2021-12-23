@@ -1,0 +1,137 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var cover = ee.ImageCollection("projects/rangeland-analysis-platform/vegetation-cover-v2"),
+    regions = ee.FeatureCollection("users/ericjensen41_default/Thesis/Project_Boundaries/Warner_StudyAreas"),
+    treat = ee.FeatureCollection("users/ericjensen41_default/Thesis/Project_Boundaries/Warner_Treatments"),
+    geometry = 
+    /* color: #d63000 */
+    /* displayProperties: [
+      {
+        "type": "rectangle"
+      }
+    ] */
+    ee.Geometry.Polygon(
+        [[[-120.34007033790206, 42.38419336674925],
+          [-120.34007033790206, 41.74496445534677],
+          [-119.64106521094894, 41.74496445534677],
+          [-119.64106521094894, 42.38419336674925]]], null, false),
+    leks = ee.FeatureCollection("users/ericjensen41_default/OregonSageGrouseLeks");
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+// Video needs
+// 1) Study map
+// 2) Treatments
+// 3) Tree cover change
+
+// Process study regions
+var contr = regions.filterMetadata('Name', 'equals', 'Treatment')//.first()
+var geom = contr.geometry()
+var regions_buf = regions.geometry().buffer(5000)
+var clipper = regions_buf
+
+// Process treatments
+var treat_buff = treat.geometry().buffer(1100)
+var geometry_fc = ee.FeatureCollection(geometry.intersection(geom).intersection(treat_buff))
+var regions_buf_fc = ee.FeatureCollection(regions_buf)
+
+// Select trees band
+var PFTs = ee.List(['TREE'])
+
+// Calculate distance images for 2007 and 2020
+var tree_07 = cover.select("TREE").filterMetadata('year', 'equals', 2007).first()
+                   .clip(clipper)
+
+var tree_20 = cover.select("TREE").filterMetadata('year', 'equals', 2020).first()
+                   .clip(clipper)
+// Bin the "landscape" data
+var tree_mw_20 = tree_20.focal_mean(200, 'circle', 'meters')
+var tree_mw_07 = tree_07.focal_mean(200, 'circle', 'meters')
+
+var tree_mask_07 = tree_07.gt(10)
+var tree_dist_07 = tree_mask_07.distance(ee.Kernel.euclidean(5000, 'meters'))
+                               .clip(clipper)
+
+var tree_mask_20 = tree_20.gt(10)
+var tree_dist_20 = tree_mask_20.distance(ee.Kernel.euclidean(5000, 'meters'))
+                               .clip(clipper)
+
+// Map the data
+var palettes = require('users/gena/packages:palettes');
+var palette = palettes.kovesi.rainbow_bgyr_35_85_c73[7].reverse()
+var palette_tree = ['A6D4B2', 'F0E442', 'E69F00', 'AB0B0B']
+// Map.addLayer(tree_dist_07, {palette: palette, min:0, max:800}, 'dist_07')
+// Map.addLayer(tree_dist_20, {palette: palette, min:0, max:800}, 'dist_20')
+// Map.addLayer(tree_07, {palette: palette_tree, min:0, max:20}, 'tree_07',false)
+// Map.addLayer(tree_20, {palette: palette_tree, min:0, max:20}, 'tree_20',false)
+// Map.addLayer(tree_mw_20, {palette: palette_tree, min:0, max:20}, 'tree_mw_20')
+// Map.addLayer(geometry_fc,{}, 'export geometry',false)
+// Map.addLayer(treat, {}, 'treatments',false)
+// Map.addLayer(regions, {}, 'regions')
+// Map.addLayer(leks, {}, 'leks')
+
+// // Export geometry
+// Map.addLayer(geometry_fc)
+// Export.table.toDrive({
+//   collection: geometry_fc,
+//   description:'removal_geom',
+//   fileFormat: 'SHP'
+// });
+
+// Export.table.toDrive({
+//   collection: regions_buf_fc,
+//   description:'regions_buf',
+//   fileFormat: 'SHP'
+// });
+
+// // Export images 
+// Export.image.toDrive({
+//   image: tree_07,
+//   description: 'Warner_Tree_07',
+//   folder: 'RAP_exports',
+//   scale: 30,
+//   region: geometry,
+//   maxPixels: 1e10
+// });
+
+// Export.image.toDrive({
+//   image: tree_20,
+//   description: 'Warner_Tree_20',
+//   folder: 'RAP_exports',
+//   scale: 30,
+//   region: geometry,
+//   maxPixels: 1e10
+// });
+
+Export.image.toDrive({
+  image: tree_dist_07,
+  description: 'Warner_Dist_07',
+  folder: 'RAP_exports',
+  scale: 30,
+  region: geometry,
+  maxPixels: 1e10
+});
+
+Export.image.toDrive({
+  image: tree_dist_20,
+  description: 'Warner_Dist_20',
+  folder: 'RAP_exports',
+  scale: 30,
+  region: geometry,
+  maxPixels: 1e10
+});
+
+// Export.image.toDrive({
+//   image: tree_mw_20,
+//   description: 'Warner_Tree_smooth_20',
+//   folder: 'RAP_exports',
+//   scale: 30,
+//   region: geometry,
+//   maxPixels: 1e10
+// });
+
+// Export.image.toDrive({
+//   image: tree_mw_07,
+//   description: 'Warner_Tree_smooth_07',
+//   folder: 'RAP_exports',
+//   scale: 30,
+//   region: geometry,
+//   maxPixels: 1e10
+// });

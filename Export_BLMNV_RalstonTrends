@@ -1,0 +1,74 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var allots = ee.FeatureCollection("users/ericjensen41_default/BLM_NV_Allotments");
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+var rap = ee.ImageCollection('projects/rangeland-analysis-platform/vegetation-cover-v2').select("AFGC", "BG", "PFGC", "SHR", "TREE")
+
+var yearList = ee.List.sequence(1990, 2020, 1)
+
+var ralston = allots.filterMetadata('ALLOT_NAME', 'equals', 'RALSTON')
+var stoneCabin = allots.filterMetadata('ALLOT_NAME', 'equals', 'STONE CABIN')
+var bm_allots = ralston.merge(stoneCabin)
+
+// Create annual composite image collections
+var rap = ee.ImageCollection(yearList.map(function(year){
+  var yearNum = ee.Number(year)
+  var yearRAP = rap.filterMetadata('year', 'equals', year).first()
+  var yearConstant = ee.Image([yearNum]).rename(ee.String('Year')).toFloat()
+  return yearRAP.addBands(yearConstant).clip(bm_allots).set({'year': year});
+}));
+
+var bare_slope = rap.select(['Year', 'BG']).reduce(ee.Reducer.linearFit())
+var afgc_slope = rap.select(['Year', 'AFGC']).reduce(ee.Reducer.linearFit())
+var pfgc_slope = rap.select(['Year', 'PFGC']).reduce(ee.Reducer.linearFit())
+var shru_slope = rap.select(['Year', 'SHR']).reduce(ee.Reducer.linearFit())
+
+var palettes = require('users/gena/packages:palettes');
+var afgc_palette = palettes.colorbrewer.RdBu[9]
+var shru_palette = palettes.colorbrewer.PuOr[9]
+var pfgc_palette = palettes.colorbrewer.PiYG[9]
+var bare_palette = palettes.colorbrewer.BrBG[9].reverse()
+
+Map.addLayer(bare_slope.select('scale'), {min:-0.2, max:0.2, palette:bare_palette}, 'BG', false)
+Map.addLayer(pfgc_slope.select('scale'), {min:-0.2, max:0.2, palette:pfgc_palette}, 'PFGC', false)
+Map.addLayer(afgc_slope.select('scale'), {min:-0.2, max:0.2, palette:afgc_palette}, 'AFGC', false)
+Map.addLayer(shru_slope.select('scale'), {min:-0.2, max:0.2, palette:shru_palette}, 'SHR', false)
+
+Map.addLayer(bm_allots.style({color: '000000', fillColor: '00000000'}), null, 'Allotments')
+
+// Export the image, specifying scale and region.
+Export.image.toDrive({
+  image: bare_slope.select('scale'),
+  description: 'BARE_Ralston_StoneCabin',
+  scale: 30,
+  region: bm_allots.geometry()
+});
+
+// Export the image, specifying scale and region.
+Export.image.toDrive({
+  image: pfgc_slope.select('scale'),
+  description: 'PFGC_Ralston_StoneCabin',
+  scale: 30,
+  region: bm_allots.geometry()
+});
+
+// Export the image, specifying scale and region.
+Export.image.toDrive({
+  image: afgc_slope.select('scale'),
+  description: 'AFGC_Ralston_StoneCabin',
+  scale: 30,
+  region: bm_allots.geometry()
+});
+
+// Export the image, specifying scale and region.
+Export.image.toDrive({
+  image: shru_slope.select('scale'),
+  description: 'SHRU_Ralston_StoneCabin',
+  scale: 30,
+  region: bm_allots.geometry()
+});
+
+Export.table.toDrive({
+  collection: bm_allots,
+  description:'bm_allots',
+  fileFormat: 'SHP'
+});

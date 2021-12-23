@@ -1,0 +1,156 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var FireN = ee.Image("users/ericjensen41_default/NTSG/MTBS_Counts_Sagebrush_30"),
+    AnnH = ee.Image("users/ericjensen41_default/NTSG/WGA_AnnualHerbaceousCover_2016_2018"),
+    RR = ee.Image("users/ericjensen41_default/NTSG/ResilienceAndResistance"),
+    GB = ee.FeatureCollection("users/ericjensen41_default/Thesis/Project_Boundaries/GBbounds");
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+Map.setOptions('hybrid') 
+
+// Pre-process data
+var mask = ee.Image('users/chohnz/wga_Reeves_NLCD_range_mask_union').neq(1)
+var FireN = FireN.updateMask(mask)
+
+// Visualization parameters
+var palettes = require('users/gena/packages:palettes');
+var fire_palette = palettes.matplotlib.plasma[7]
+var fireParams = {
+  min: 0,
+  max: 7,
+  palette: fire_palette} //['fff7bc', 'feb24c', 'f03b20', '781D10'] }
+var annParams = {
+  min: 0,
+  max: 60,
+  palette: ['91ee89', 'fdea00', 'ec7c00', 'b60900'] }
+var rrParams = {
+  min: 1,
+  max: 3,
+  palette: ['5695d2', 'fafb09', 'e60000'] }
+
+// Map.addLayer(RR, rrParams, 'RandR', false)
+
+Map.addLayer(AnnH, annParams, 'Annual herbaceous cover')
+// Map.addLayer(GB.style({color: 'black', fillColor:'00000000'}), {}, 'Great Basin boundary')
+var linkedMap = ui.Map()
+linkedMap.addLayer(FireN, fireParams, 'Times burned')
+// linkedMap.addLayer(GB.style({color: 'black', fillColor:'00000000'}), {}, 'Great Basin boundary') // Map.addLayer(FireN, fireParams, 'FireN')
+linkedMap.setOptions('hybrid') 
+// Link the default Map to the other map.
+var linker = ui.Map.Linker([ui.root.widgets().get(0), linkedMap]);
+
+
+// Register a function to the linked map to update the inset map.
+linkedMap.onChangeBounds(function() {
+  var bounds = ee.Geometry.Rectangle(Map.getBounds());
+});
+
+// Create a SplitPanel which holds the linked maps side-by-side.
+var splitPanel = ui.SplitPanel({
+  firstPanel: linker.get(0),
+  secondPanel: linker.get(1),
+  orientation: 'horizontal',
+  wipe: true,
+  style: {stretch: 'both'}
+});
+
+// Set the SplitPanel as the only thing in root.
+ui.root.widgets().reset([splitPanel]);
+
+// Set map location
+Map.setCenter(-115.34, 41.43, 7);
+
+
+/*
+ * Legend setup (annual herbaceous)
+ */
+
+// Creates a color bar thumbnail image for use in legend from the given color
+// palette.
+function makeColorBarParams(palette) {
+  return {
+    bbox: [0, 0, 1, 0.1],
+    dimensions: '100x20',
+    format: 'png',
+    min: 0,
+    max: 1,
+    palette: palette,
+  };
+}
+
+// Create the color bar for the legend.
+var colorBar = ui.Thumbnail({
+  image: ee.Image.pixelLonLat().select(0),
+  params: makeColorBarParams(annParams.palette),
+  style: {stretch: 'horizontal', margin: '0px 8px', maxHeight: '24px'},
+});
+
+// Create a panel with three numbers for the legend.
+var legendLabels = ui.Panel({
+  widgets: [
+    ui.Label(annParams.min, {margin: '4px 8px'}),
+    ui.Label(
+        (annParams.max / 2),
+        {margin: '4px 8px', textAlign: 'center', stretch: 'horizontal'}),
+    ui.Label(annParams.max, {margin: '4px 8px'})
+  ],
+  layout: ui.Panel.Layout.flow('horizontal')
+});
+
+var legendTitle = ui.Label({
+  value: 'Annual herbaceous cover (%)',
+  style: {fontWeight: 'bold'}
+});
+
+// Add the legendPanel to the map.
+var legendPanel = ui.Panel([legendTitle, colorBar, legendLabels])
+var legendStyle = legendPanel.style()
+legendStyle.set({position: 'bottom-left'})
+
+Map.add(legendPanel);
+
+
+
+/*
+ * Legend setup (times burned)
+ */
+
+// Creates a color bar thumbnail image for use in legend from the given color
+// palette.
+function makeColorBarParams(palette) {
+  return {
+    bbox: [0, 0, 1, 0.1],
+    dimensions: '100x20',
+    format: 'png',
+    min: 0,
+    max: 1,
+    palette: palette,
+  };
+}
+
+// Create the color bar for the legend.
+var colorBar = ui.Thumbnail({
+  image: ee.Image.pixelLonLat().select(0),
+  params: makeColorBarParams(fireParams.palette),
+  style: {stretch: 'horizontal', margin: '0px 8px', maxHeight: '24px'},
+});
+
+// Create a panel with three numbers for the legend.
+var legendLabels = ui.Panel({
+  widgets: [
+    ui.Label(fireParams.min, {margin: '4px 8px', textAlign: 'left', stretch: 'horizontal'}),
+    // ui.Label( (fireParams.max / 2),{margin: '4px 8px', textAlign: 'center', stretch: 'horizontal'}),
+    ui.Label(fireParams.max, {margin: '4px 8px', textAlign: 'right', stretch: 'horizontal'})
+  ],
+  layout: ui.Panel.Layout.flow('horizontal')
+});
+
+var legendTitle = ui.Label({
+  value: 'Number of times burned',
+  style: {fontWeight: 'bold'}
+});
+
+// Add the legendPanel to the map.
+var legendPanel = ui.Panel([legendTitle, colorBar, legendLabels])
+var legendStyle = legendPanel.style()
+legendStyle.set({position: 'bottom-right'})
+
+linkedMap.add(legendPanel);

@@ -1,0 +1,13 @@
+var rap = ee.ImageCollection('projects/rangeland-analysis-platform/vegetation-cover-v2').select('TREE', 'AFGC', 'PFGC', 'BG')
+print(rap)
+var rap_befr = rap.filterMetadata('year', 'less_than', 1992).filterMetadata('year', 'greater_than', 1988).mean()
+var rap_aftr = rap.filterMetadata('year', 'greater_than', 2017).mean()
+var rap_diff = rap_aftr.subtract(rap_befr)
+
+var palettes = require('users/gena/packages:palettes');
+var palette = palettes.colorbrewer.BrBG[9]
+
+Map.addLayer(rap_diff.select('TREE'), {min:-20, max: 20, palette: palette}, 'diff_tr',false)
+Map.addLayer(rap_diff.select('AFGC'), {min:-20, max: 20, palette: palette}, 'diff_ah',false)
+Map.addLayer(rap_diff.select('PFGC'), {min:-20, max: 20, palette: palette}, 'diff_ph',false)
+Map.addLayer(rap_diff.select('BG'), {min:-20, max: 20, palette: palette}, 'diff_bg',false)

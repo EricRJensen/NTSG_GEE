@@ -1,0 +1,23 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var NAIP = ee.ImageCollection("USDA/NAIP/DOQQ"),
+    states = ee.FeatureCollection("TIGER/2018/States");
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+var montana = states.filterMetadata('NAME', 'equals', 'Montana').first()
+var idaho = states.filterMetadata('NAME', 'equals', 'Idaho').first()
+var wyoming = states.filterMetadata('NAME', 'equals', 'Wyoming').first()
+
+var states = ee.Feature(ee.FeatureCollection([montana,idaho,wyoming]).geometry())
+Map.addLayer(states)
+
+var NAIP_montana = NAIP.filterBounds(Montana.geometry()).filterDate('2017-01-01', '2020-09-21')//.mosaic()
+print(NAIP_montana)
+
+
+// Map.addLayer(NAIP_montana)
+
+// Export the FeatureCollection to a KML file.
+Export.table.toDrive({
+  collection: features,
+  description:'vectorsToDriveExample',
+  fileFormat: 'KML'
+});

@@ -1,0 +1,37 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var geometry = 
+    /* color: #d63000 */
+    /* displayProperties: [
+      {
+        "type": "rectangle"
+      }
+    ] */
+    ee.Geometry.Polygon(
+        [[[-117.63408203125, 49.24607680668494],
+          [-117.63408203125, 41.0708190854881],
+          [-103.8572265625, 41.0708190854881],
+          [-103.8572265625, 49.24607680668494]]], null, false);
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+// https://smorford.users.earthengine.app/view/northern-rocky-mountains-historical-imagery#lon=-116.52206811904907;lat=42.90608236582827;zoom=16;
+var roi = ee.FeatureCollection("projects/rangeland-analysis-platform/historical-conifer/northern-rockies/roi");
+roi = ee.FeatureCollection([ee.Feature(roi.geometry(),{class:1})]);
+roi = ee.Image().byte().paint(roi, "class").rename("class");
+
+var hist_ic = ee.ImageCollection("projects/rangeland-analysis-platform/historical-conifer/northern-rockies/ortho");
+hist_ic = hist_ic.map(function(img) {
+  return img.updateMask(roi);  
+});
+
+var hist_i = hist_ic.mosaic()
+                    // .reproject('EPSG:4326', null, 500);
+
+Map.addLayer(hist_i);
+
+// Export the image, specifying scale and region.
+// Export.image.toDrive({
+//   image: hist_i,
+//   description: 'HistMT',
+//   scale: 1,
+//   maxPixels: 1e13,
+//   region: geometry
+// });
